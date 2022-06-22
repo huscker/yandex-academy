@@ -11,3 +11,6 @@ def format_record(raw_record: Record, model: Type[BaseModel]) -> BaseModel:
     if not raw_record:
         return None
     return model(**raw_record)
+
+def extract_uuids(raw_records: list[Record]) -> list[str]:
+    return [record['uuid'] for record in raw_records]
