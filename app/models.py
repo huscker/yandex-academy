@@ -2,7 +2,7 @@ from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel, Field
 from enum import Enum
-from typing import Optional, List
+from typing import Optional, List, Union
 
 
 class SuccessfullResponse(BaseModel):
@@ -27,11 +27,11 @@ class ShopUnitImportRequest(BaseModel):
 class ShopUnitOutput(BaseModel):
     id: UUID = Field(..., title='Уникальный идентификатор')
     name: str = Field(..., title='Имя категории')
-    parentId: str = Field(None, title='UUID родительской категории')
+    parentId: UUID = Field(None, title='UUID родительской категории')
     type: ShopUnitType = Field(..., title='Тип элемента - категория или товар')
-    date: datetime = Field(..., title='Время обновления добавляемых товаров/категорий')
+    date: Union[str | datetime] = Field(..., title='Время обновления добавляемых товаров/категорий', example='2022-02-03T15:00:00.000Z')
     price: int = Field(None, title='Целое число, для категорий должно содержать null')
-    children: List['ShopUnitOutput'] = Field([], title='Дочерние элементы')
+    children: Union[List['ShopUnitOutput'] | None] = Field([], title='Дочерние элементы')
 
 class ShopUnitOutputPlain(BaseModel):
     id: UUID = Field(..., title='Уникальный идентификатор')

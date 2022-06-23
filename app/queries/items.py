@@ -7,7 +7,7 @@ from asyncpg.exceptions import UniqueViolationError, ForeignKeyViolationError
 from app.db.db import DB
 from app.exceptions import BadRequest, NotFoundException, InternalServerError
 from app.models import ShopUnitImportRequest, ShopUnitOutput, ShopUnitOutputPlain, ShopUnitType
-from app.utils import format_records
+from app.utils import format_records, format_record
 
 # TODO: добавить обновление средней цены категории
 # TODO: обновить цены и парент айди при обновлении
@@ -29,95 +29,112 @@ async def add_shop_units(request: ShopUnitImportRequest) -> None:
     items = request.items
     if len(set(map(lambda x: x.id, items))) != len(list(map(lambda x: x.id, items))):
         raise BadRequest('Уникальные UUID должны быть')
-    # Проверка на типы родителей
-    sql = """
-        select type from shop_units
-        where uuid = ANY($1::uuid[])
-    """
-    parent_types = await DB.fetch(sql, list(map(lambda x: x.parentId,items)))
-    category_types = list(map(lambda x: x['type'] == ShopUnitType.CATEGORY.value, parent_types))
-    if not all(category_types):
-        raise BadRequest('Родители не типа категории')
-    # Добавление/Обновление
-    sql = """
-        insert into shop_units(uuid, name, type, parentid, date, price) 
-        values (coalesce($6, uuid_generate_v4()), $1, $2, $3, $4, $5) 
-        on conflict (uuid) do update 
-        set name = excluded.name, parentid = excluded.parentid,
-        date = excluded.date, price = excluded.price
-        returning uuid
-    """
-    coroutines = [
-        DB.fetchval(sql,item.name, item.type.value, item.parentId,request.updateDate.replace(tzinfo=None),item.price, item.id)
-        for item in items
-    ]
-    uuids = list()
-    try:
-        uuids = list(await gather(*coroutines))
-    except ForeignKeyViolationError as e:
-        raise BadRequest('Родитель не существует') from e
-    sql = """
-        insert into snapshot
-            select * from shop_units
-            where uuid = ANY($1::uuid[]) 
-    """
-    await DB.execute(sql, uuids)
+    unique_parent_ids = set()
+    for item in items:
+        # Проверка на тип родителей
+        sql = """
+            select type from shop_units
+            where id = $1
+        """
+        parent_type = await DB.fetchval(sql, item.parentId)
+        if parent_type and parent_type != ShopUnitType.CATEGORY.value:
+            raise BadRequest('Родитель не типа категории')
+        # Проверка на инвариантность типа
+        sql = """
+            select type from shop_units
+            where id = $1
+        """
+        current_type = await DB.fetchrow(sql, item.id)
+        if current_type and current_type != item.type.value:
+            raise BadRequest('Невозможно измененить тип')
+        # Добавление/Обновление
+        sql = """
+            insert into shop_units(id, name, type, parentId, date, price) 
+            values (coalesce($6, uuid_generate_v4()), $1, $2, $3, $4, $5) 
+            on conflict (id) do update 
+            set name = excluded.name, parentid = excluded.parentid,
+            date = excluded.date, price = excluded.price
+            returning id
+        """
+        uuid = None
+        try:
+            uuid = await DB.fetchval(sql,item.name, item.type.value, item.parentId,request.updateDate,item.price, item.id)
+        except ForeignKeyViolationError as e:
+            raise BadRequest('Родитель не существует') from e
+        sql = """
+            insert into snapshot
+                select * from shop_units
+                where id = $1
+        """
+        await DB.execute(sql, uuid)
+        unique_parent_ids.add(item.parentId)
+    st = list(unique_parent_ids)
+    while st:
+        cur = st.pop()
+        sql = """
+            update shop_units
+            set date = $1
+            where id = $2
+            returning parentid
+        """
+        comming = await DB.fetchval(sql, request.updateDate, cur)
+        if comming:
+            st.append(comming)
 
 
 async def delete_shop_unit(unit_id: UUID) -> None:
     sql = """
-        select uuid from shop_units
-        where uuid = $1
+        select id from shop_units
+        where id = $1
     """
     unit_id = await DB.fetchval(sql, unit_id)
     if not unit_id:
         raise NotFoundException('Категория/товар не найден')
     sql = """
         delete from shop_units
-        where uuid = $1
+        where id = $1
     """
     await DB.execute(sql,unit_id)
-    sql = """
-        delete from snapshot
-        where uuid = $1
-    """
-    await DB.execute(sql, unit_id)
 
 async def get_shop_unit(unit_id: UUID) -> ShopUnitOutput:
-    async def recursive_get(unit_id: UUID) -> (ShopUnitOutput, int):
+    async def recursive_get(unit_id: UUID) -> (ShopUnitOutput, int, int):
         sql = """
-            select uuid, name, type, parentId, date, price from shop_units
-            where uuid = $1
+            select id, name, type, parentId, date, price from shop_units
+            where id = $1
         """
         root = await DB.fetchrow(sql,unit_id)
-        root = format_records(root, ShopUnitOutput)
+        root = format_record(root, ShopUnitOutput)
         sql = """
-            select uuid from shop_units
+            select id from shop_units
             where parentid = $1
         """
-        children_uuids = await DB.fetch(sql, unit_id) # Тут посмотреть что возвращает DB fetch если детей нет
-        children = [await recursive_get(uuid) for uuid in children_uuids]
+        children_uuids = await DB.fetch(sql, unit_id)
+        children = [await recursive_get(uuid['id']) for uuid in children_uuids]
         price_sum = sum(map(lambda x: x[1], children))
+        price_num = sum(map(lambda x: x[2], children))
         if root.type == ShopUnitType.CATEGORY:
-            root.price = price_sum // len(children)
+            root.price = price_sum // price_num
         else:
             price_sum = root.price
+            price_num = 1
         root.children = list(map(lambda x: x[0], children))
-        return root, price_sum
+        if not root.children:
+            root.children = None
+        return root, price_sum, price_num
 
     sql = """
-        select uuid from shop_units
-        where uuid = $1
+        select id from shop_units
+        where id = $1
     """
     root = await DB.fetchrow(sql, unit_id)
     if not root:
         raise NotFoundException('Категория/товар не найден')
     result = await recursive_get(unit_id)
-    return format_records(result, ShopUnitOutput)
+    return result[0]
 
 async def get_updated(date: datetime) -> list[ShopUnitOutputPlain]:
     sql = """
-       select uuid, name, type, parentId, date, price from shop_units
+       select id, name, type, parentId, date, price from shop_units
        where $1 - 1 <= date and date <= $1 and date = $2
     """
     result = await DB.fetch(sql, date, ShopUnitType.OFFER)
@@ -127,15 +144,15 @@ async def get_updated(date: datetime) -> list[ShopUnitOutputPlain]:
 async def get_snapshots(uuid: UUID, date_start: datetime, date_end: datetime) -> list[ShopUnitOutputPlain]:
     async def calculate_category_price(uuid: UUID, date_end: datetime) -> int:
         sql = """
-            select uuid, type, price, date from snapshot
-            where date <= $1 and uuid = $2
+            select id, type, price, date from snapshot
+            where date <= $1 and id = $2
             order by date desc 
         """
         root = await DB.fetchrow(sql, date_end, uuid)
         if root.type == ShopUnitType.OFFER:
             return root.price
         sql = """
-            select uuid,date from snapshot
+            select id,date from snapshot
             where parentid = $1 and date <= $2
         """
         children = await DB.fetch(sql, uuid, root.date)
@@ -147,7 +164,7 @@ async def get_snapshots(uuid: UUID, date_start: datetime, date_end: datetime) ->
 
 
     sql = """
-        select uuid, name, type, parentId, date, price from snapshot
+        select id, name, type, parentId, date, price from snapshot
         where $1 <= date and date < $2
     """
     result = await DB.fetch(sql, uuid, date_start, date_end)
