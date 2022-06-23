@@ -1,0 +1,37 @@
+version: '3.7'
+services:
+  db:
+    image: postgres
+    build:
+      context: .
+      dockerfile: ./docker/db/Dockerfile
+    ports:
+      - ":5432"
+    volumes:
+      - ./data/db:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=huscker
+      - POSTGRES_PASSWORD=12345678
+      - POSTGRES_DB=academy
+    networks:
+      - backend
+    restart: always
+  web:
+    build:
+      context: .
+      dockerfile: ./docker/web/Dockerfile
+    volumes:
+      - .:/code
+    ports:
+      - "80:8087"
+    depends_on:
+      - db
+    environment:
+      - DATABASE_URL=postgresql://huscker:12345678@db:5432/academy
+      - SERVER_PORT=8087
+    networks:
+      - backend
+    restart: always
+networks:
+  backend:
+    driver: bridge

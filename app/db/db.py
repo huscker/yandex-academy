@@ -29,24 +29,32 @@ class DB:
     @classmethod
     @exception_wrapper
     async def execute(cls, sql, *args) -> None:
+        if not cls.pool:
+            await cls.connect_db()
         async with cls.pool.acquire() as con:
             return await con.execute(sql, *args)
 
     @classmethod
     @exception_wrapper
     async def fetch(cls, sql, *args) -> list[Record]:
+        if not cls.pool:
+            await cls.connect_db()
         async with cls.pool.acquire() as con:
             return await con.fetch(sql, *args)
 
     @classmethod
     @exception_wrapper
     async def fetchval(cls, sql, *args):
+        if not cls.pool:
+            await cls.connect_db()
         async with cls.pool.acquire() as con:
             return await con.fetchval(sql, *args)
 
     @classmethod
     @exception_wrapper
     async def fetchrow(cls, sql, *args) -> Record:
+        if not cls.pool:
+            await cls.connect_db()
         async with cls.pool.acquire() as con:
             return await con.fetchrow(sql, *args)
 

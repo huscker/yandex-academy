@@ -113,7 +113,10 @@ async def get_shop_unit(unit_id: UUID) -> ShopUnitOutput:
         price_sum = sum(map(lambda x: x[1], children))
         price_num = sum(map(lambda x: x[2], children))
         if root.type == ShopUnitType.CATEGORY:
-            root.price = price_sum // price_num
+            if price_num:
+                root.price = price_sum // price_num
+            else:
+                root.price = None
         else:
             price_sum = root.price
             price_num = 1
