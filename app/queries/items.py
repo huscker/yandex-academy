@@ -149,15 +149,15 @@ async def get_snapshots(uuid: UUID, date_start: datetime, date_end: datetime) ->
             order by date desc 
         """
         root = await DB.fetchrow(sql, date_end, uuid)
-        if root.type == ShopUnitType.OFFER:
+        if root['type'] == ShopUnitType.OFFER:
             return root.price
         sql = """
             select id,date from snapshot
             where parentid = $1 and date <= $2
         """
-        children = await DB.fetch(sql, uuid, root.date)
+        children = await DB.fetch(sql, uuid, root['date'])
         coroutines = [
-            calculate_category_price(item['uuid'], item['date'])
+            calculate_category_price(item['id'], item['date'])
             for item in children
         ]
         return sum(list(await gather(*coroutines)))
@@ -167,8 +167,8 @@ async def get_snapshots(uuid: UUID, date_start: datetime, date_end: datetime) ->
         select id, name, type, parentId, date, price from snapshot
         where $1 <= date and date < $2
     """
-    result = await DB.fetch(sql, uuid, date_start, date_end)
+    result = format_records(await DB.fetch(sql, date_start, date_end), ShopUnitOutputPlain)
     for item in result:
-        if item['type'] == ShopUnitType.CATEGORY:
-            item['price'] = await calculate_category_price(item['uuid'], item['date'])
-    return format_records(result, ShopUnitOutputPlain)
+        if item.type.value == ShopUnitType.CATEGORY.value:
+            item.price = await calculate_category_price(item.id, item.date)
+    return result
