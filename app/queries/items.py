@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from asyncio import gather
 from asyncpg import Record
 from asyncpg.exceptions import UniqueViolationError, ForeignKeyViolationError
@@ -135,9 +135,9 @@ async def get_shop_unit(unit_id: UUID) -> ShopUnitOutput:
 async def get_updated(date: datetime) -> list[ShopUnitOutputPlain]:
     sql = """
        select id, name, type, parentId, date, price from shop_units
-       where $1 - 1 <= date and date <= $1 and date = $2
+       where $1 <= date and date <= $2 and type = $3
     """
-    result = await DB.fetch(sql, date, ShopUnitType.OFFER)
+    result = await DB.fetch(sql,date - timedelta(days=1), date, ShopUnitType.OFFER.value)
     return format_records(result, ShopUnitOutputPlain)
 
 

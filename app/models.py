@@ -36,7 +36,7 @@ class ShopUnitOutput(BaseModel):
 class ShopUnitOutputPlain(BaseModel):
     id: UUID = Field(..., title='Уникальный идентификатор')
     name: str = Field(..., title='Имя категории')
-    date: datetime = Field(..., title='Время обновления добавляемых товаров/категорий')
+    date: Union[str | datetime] = Field(..., title='Время обновления добавляемых товаров/категорий')
     parentId: str = Field(None, title='UUID родительской категории')
     price: int = Field(None, title='Целое число, для категорий должно содержать null')
     type: ShopUnitType = Field(..., title='Тип элемента - категория или товар')
