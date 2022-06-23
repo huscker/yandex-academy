@@ -1,7 +1,7 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, UUID4
 from enum import Enum
-from typing import Optional
+from typing import Optional, List
 
 
 class SuccessfullResponse(BaseModel):
@@ -12,7 +12,7 @@ class ShopUnitType(Enum):
     CATEGORY='CATEGORY'
 
 class ShopUnitImport(BaseModel):
-    id: str = Field(..., title='Уникальный идентификатор')
+    id: UUID4 = Field(..., title='Уникальный идентификатор')
     name : str = Field(..., title='Имя категории')
     parentId: str = Field(None, title='UUID родительской категории')
     type: ShopUnitType = Field(..., title='Тип элемента - категория или товар')
@@ -24,19 +24,16 @@ class ShopUnitImportRequest(BaseModel):
 
 
 class ShopUnitOutput(BaseModel):
-    pass
-
-class ShopUnitOutput(BaseModel):
-    id: str = Field(..., title='Уникальный идентификатор')
+    id: UUID4 = Field(..., title='Уникальный идентификатор')
     name: str = Field(..., title='Имя категории')
     parentId: str = Field(None, title='UUID родительской категории')
     type: ShopUnitType = Field(..., title='Тип элемента - категория или товар')
     date: datetime = Field(..., title='Время обновления добавляемых товаров/категорий')
     price: int = Field(None, title='Целое число, для категорий должно содержать null')
-    children: list[ShopUnitOutput] = Field([], title='Дочерние элементы')
+    children: list['ShopUnitOutput'] = Field([], title='Дочерние элементы')
 
 class ShopUnitOutputPlain(BaseModel):
-    id: str = Field(..., title='Уникальный идентификатор')
+    id: UUID4 = Field(..., title='Уникальный идентификатор')
     name: str = Field(..., title='Имя категории')
     date: datetime = Field(..., title='Время обновления добавляемых товаров/категорий')
     parentId: str = Field(None, title='UUID родительской категории')

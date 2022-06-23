@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from datetime import datetime
 from asyncio import gather
 from asyncpg import Record
@@ -64,7 +66,7 @@ async def add_shop_units(request: ShopUnitImportRequest) -> None:
     await DB.execute(sql, uuids)
 
 
-async def delete_shop_unit(unit_id: int) -> None:
+async def delete_shop_unit(unit_id: uuid4) -> None:
     sql = """
         select uuid from shop_units
         where uuid = $1
@@ -83,8 +85,8 @@ async def delete_shop_unit(unit_id: int) -> None:
     """
     await DB.execute(sql, unit_id)
 
-async def get_shop_unit(unit_id: int) -> ShopUnitOutput:
-    async def recursive_get(unit_id: int) -> (ShopUnitOutput, int):
+async def get_shop_unit(unit_id: uuid4) -> ShopUnitOutput:
+    async def recursive_get(unit_id: uuid4) -> (ShopUnitOutput, int):
         sql = """
             select uuid, name, type, parentId, date, price from shop_units
             where uuid = $1
@@ -124,8 +126,8 @@ async def get_updated(date: datetime) -> list[ShopUnitOutputPlain]:
     return format_records(result, ShopUnitOutputPlain)
 
 
-async def get_snapshots(uuid: int, date_start: datetime, date_end: datetime) -> list[ShopUnitOutputPlain]:
-    async def calculate_category_price(uuid: int, date_end: datetime) -> int:
+async def get_snapshots(uuid: uuid4, date_start: datetime, date_end: datetime) -> list[ShopUnitOutputPlain]:
+    async def calculate_category_price(uuid: uuid4, date_end: datetime) -> int:
         sql = """
             select uuid, type, price, date from snapshot
             where date <= $1 and uuid = $2
