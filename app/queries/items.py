@@ -1,4 +1,4 @@
-from uuid import uuid4
+from uuid import UUID
 
 from datetime import datetime
 from asyncio import gather
@@ -31,14 +31,12 @@ async def add_shop_units(request: ShopUnitImportRequest) -> None:
         raise BadRequest('Уникальные UUID должны быть')
     # Проверка на типы родителей
     sql = """
-        select u1.type from shop_units as u1
-        join shop_units as u2
-        on u1.uuid = u2.parentid
-        where u2.uuid = ANY($1::uuid[])
+        select type from shop_units
+        where uuid = ANY($1::uuid[])
     """
-    parent_types = await DB.fetch(sql, list(map(lambda x: x.id)))
-    category_types = map(lambda x: x['type'] == ShopUnitType.CATEGORY, parent_types)
-    if len(list(category_types)) != len(items):
+    parent_types = await DB.fetch(sql, list(map(lambda x: x.parentId,items)))
+    category_types = list(map(lambda x: x['type'] == ShopUnitType.CATEGORY.value, parent_types))
+    if not all(category_types):
         raise BadRequest('Родители не типа категории')
     # Добавление/Обновление
     sql = """
@@ -50,7 +48,7 @@ async def add_shop_units(request: ShopUnitImportRequest) -> None:
         returning uuid
     """
     coroutines = [
-        DB.execute(sql,item.name, item.type, item.parentId,request.updateDate,item.price, item.id)
+        DB.fetchval(sql,item.name, item.type.value, item.parentId,request.updateDate.replace(tzinfo=None),item.price, item.id)
         for item in items
     ]
     uuids = list()
@@ -66,7 +64,7 @@ async def add_shop_units(request: ShopUnitImportRequest) -> None:
     await DB.execute(sql, uuids)
 
 
-async def delete_shop_unit(unit_id: uuid4) -> None:
+async def delete_shop_unit(unit_id: UUID) -> None:
     sql = """
         select uuid from shop_units
         where uuid = $1
@@ -85,8 +83,8 @@ async def delete_shop_unit(unit_id: uuid4) -> None:
     """
     await DB.execute(sql, unit_id)
 
-async def get_shop_unit(unit_id: uuid4) -> ShopUnitOutput:
-    async def recursive_get(unit_id: uuid4) -> (ShopUnitOutput, int):
+async def get_shop_unit(unit_id: UUID) -> ShopUnitOutput:
+    async def recursive_get(unit_id: UUID) -> (ShopUnitOutput, int):
         sql = """
             select uuid, name, type, parentId, date, price from shop_units
             where uuid = $1
@@ -126,8 +124,8 @@ async def get_updated(date: datetime) -> list[ShopUnitOutputPlain]:
     return format_records(result, ShopUnitOutputPlain)
 
 
-async def get_snapshots(uuid: uuid4, date_start: datetime, date_end: datetime) -> list[ShopUnitOutputPlain]:
-    async def calculate_category_price(uuid: uuid4, date_end: datetime) -> int:
+async def get_snapshots(uuid: UUID, date_start: datetime, date_end: datetime) -> list[ShopUnitOutputPlain]:
+    async def calculate_category_price(uuid: UUID, date_end: datetime) -> int:
         sql = """
             select uuid, type, price, date from snapshot
             where date <= $1 and uuid = $2

@@ -1,5 +1,5 @@
 from datetime import timedelta,datetime
-from uuid import uuid4
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status, Path, Query
 from fastapi.param_functions import Depends
@@ -7,8 +7,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 import app.queries.items as items_queries
 from app.exceptions import NotFoundException, BadRequest, ForbiddenException
-from app.settings import ACCESS_TOKEN_EXPIRE_MINUTES
 from app.models import SuccessfullResponse, ShopUnitImportRequest, ShopUnitOutput, ShopUnitOutputPlain
+from app.models import NotFoundError, ValidationError
 from app.utils import format_record
 
 basic_router = APIRouter(tags=["Базовые задачи"])
@@ -19,7 +19,12 @@ additional_router = APIRouter(tags=['Дополнительные задачи']
 
 @basic_router.post('/imports',
                    response_model=SuccessfullResponse,
-                   responses={400: {'code': 400, 'message': 'Validation Failed'}},
+                   responses={
+                       400: {
+                            "description": "Невалидная схема документа или входные данные не верны",
+                            "model": ValidationError
+                       }
+                   },
                    description="""
                    Импортирует новые товары и/или категории. Товары/категории импортированные повторно обновляют текущие. Изменение типа элемента с товара на категорию или с категории на товар не допускается. Порядок элементов в запросе является произвольным.
 
@@ -45,8 +50,14 @@ async def import_units(request: ShopUnitImportRequest):
 @basic_router.delete('/delete/{id}',
                      response_model=SuccessfullResponse,
                      responses={
-                         400: {'code': 400, 'message': 'Validation Failed'},
-                         404: {'code': 404, 'message': 'Item not found'}
+                         400: {
+                             "description": "Невалидная схема документа или входные данные не верны",
+                             "model": ValidationError
+                         },
+                         404: {
+                             "description": "Категория/товар не найден",
+                             "model": NotFoundError
+                         }
                      },
                      description="""
                      Удалить элемент по идентификатору. При удалении категории удаляются все дочерние элементы. Доступ к статистике (истории обновлений) удаленного элемента невозможен.
@@ -55,14 +66,17 @@ async def import_units(request: ShopUnitImportRequest):
 
                      **Обратите, пожалуйста, внимание на этот обработчик. При его некорректной работе тестирование может быть невозможно.**                     """
                      )
-async def delete_units(id: uuid4 = Path(..., description='Идентификатор')):
+async def delete_units(id: UUID = Path(..., description='Идентификатор')):
     await items_queries.delete_shop_unit(id)
     return SuccessfullResponse()
 
 @basic_router.get('/nodes/{id}',
                   response_model=ShopUnitOutput,
                   responses={
-                      400: {'code': 400, 'message': 'Validation Failed'},
+                      400: {
+                          "description": "Невалидная схема документа или входные данные не верны",
+                          "model": ValidationError
+                      }
                   },
                   description="""
                   Получить информацию об элементе по идентификатору. При получении информации о категории также предоставляется информация о её дочерних элементах.
@@ -70,15 +84,18 @@ async def delete_units(id: uuid4 = Path(..., description='Идентификат
                   - для пустой категории поле children равно пустому массиву, а для товара равно null
                   - цена категории - это средняя цена всех её товаров, включая товары дочерних категорий. Если категория не содержит товаров цена равна null. При обновлении цены товара, средняя цена категории, которая содержит этот товар, тоже обновляется.                    """
                   )
-async def get_units(id: uuid4 = Path(..., description='Идентификатор элемента')):
+async def get_units(id: UUID = Path(..., description='Идентификатор элемента')):
     result = await items_queries.get_shop_unit(id)
     return result
 
 @additional_router.get('/sales',
                       response_model=list[ShopUnitOutputPlain],
-                      responses={
-                          400: {'code': 400, 'message': 'Validation Failed'},
-                      },
+                       responses={
+                           400: {
+                               "description": "Невалидная схема документа или входные данные не верны",
+                               "model": ValidationError
+                           }
+                       },
                       description="""
                       Получение статистики (истории обновлений) по товару/категории за заданный полуинтервал [from, to). Статистика по удаленным элементам недоступна.
                     
@@ -92,8 +109,14 @@ async def get_sales(date: datetime = Query(..., description='Дата и вре�
 @additional_router.get('/node/{id}/statistic',
                        response_model=list[ShopUnitOutputPlain],
                        responses={
-                           400: {'code': 400, 'message': 'Validation Failed'},
-                           404: {'code': 404, 'message': 'Item not found'}
+                           400: {
+                               "description": "Невалидная схема документа или входные данные не верны",
+                               "model": ValidationError
+                           },
+                           404: {
+                               "description": "Категория/товар не найден",
+                               "model": NotFoundError
+                           }
                        },
                        description="""
                        Получение статистики (истории обновлений) по товару/категории за заданный полуинтервал [from, to). Статистика по удаленным элементам недоступна.
@@ -102,7 +125,7 @@ async def get_sales(date: datetime = Query(..., description='Дата и вре�
                        - можно получить статистику за всё время.
                         """
                        )
-async def get_statistic(id: uuid4 = Path(..., description='UUID товара/категории для которой будет отображаться статистика'),
+async def get_statistic(id: UUID = Path(..., description='UUID товара/категории для которой будет отображаться статистика'),
                         dateStart: datetime = Query(..., description='Дата и время начала интервала, для которого считается статистика. Дата должна обрабатываться согласно ISO 8601 (такой придерживается OpenAPI). Если дата не удовлетворяет данному формату, необходимо отвечать 400.'),
                         dateEnd: datetime = Query(..., description='Дата и время конца интервала, для которого считается статистика. Дата должна обрабатываться согласно ISO 8601 (такой придерживается OpenAPI). Если дата не удовлетворяет данному формату, необходимо отвечать 400.')):
     result = await items_queries.get_snapshots(id,dateStart,dateEnd)

@@ -11,7 +11,7 @@ class CommonException(Exception):
 
 class NotFoundException(CommonException):
     def __init__(self, error: str) -> None:
-        super().__init__(status.HTTP_404_NOT_FOUND, error)
+        super().__init__(status.HTTP_404_NOT_FOUND, 'Item not found')
 
 class InternalServerError(CommonException):
     def __init__(self, error: str):
@@ -19,7 +19,7 @@ class InternalServerError(CommonException):
 
 class BadRequest(CommonException):
     def __init__(self, error: str) -> None:
-        super().__init__(status.HTTP_400_BAD_REQUEST, error)
+        super().__init__(status.HTTP_400_BAD_REQUEST, 'Validation Failed')
 
 class ForbiddenException(CommonException):
     def __init__(self, error: str) -> None:

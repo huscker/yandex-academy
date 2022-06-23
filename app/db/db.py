@@ -21,10 +21,8 @@ class DB:
 
     @classmethod
     async def connect_db(cls) -> None:
-        print(DATABASE_URL)
         try:
             cls.pool = await asyncpg.create_pool(DATABASE_URL)
-            print(cls.pool)
         except Exception as e:
             print(e)
 
